@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+:root {
+  --color-paper: #f1ede1;
+  --color-card: #faf8f0;
+  --color-ink: #1d3557;
+  --color-ink-soft: #4a6178;
+  --color-rule: #cfc7ab;
+  --color-stamp-red: #a63a2f;
+  --color-stamp-green: #2f6f4e;
+}
+
+@theme inline {
+  --color-paper: var(--color-paper);
+  --color-card: var(--color-card);
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-rule: var(--color-rule);
+  --color-stamp-red: var(--color-stamp-red);
+  --color-stamp-green: var(--color-stamp-green);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-ledger: var(--font-ledger);
+}
+
+html {
+  background: var(--color-paper);
+}
+
+body {
+  background:
+    repeating-linear-gradient(
+      var(--color-paper),
+      var(--color-paper) 35px,
+      color-mix(in srgb, var(--color-rule) 35%, transparent) 36px
+    );
+  color: var(--color-ink);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  /* Stops iOS Safari bouncing the paper texture past the page edges */
+  overscroll-behavior-y: none;
+}
+
+/* Keep controls clear of the iPhone home indicator */
+.safe-bottom {
+  bottom: calc(1.5rem + env(safe-area-inset-bottom));
+}
+
+.font-ledger {
+  font-family: var(--font-ledger), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.font-display {
+  font-family: var(--font-display), ui-serif, serif;
+}
+
+/* perforated edge along the bottom of a passbook stub */
+.stub-perforation {
+  background-image: radial-gradient(
+    circle,
+    var(--color-paper) 2px,
+    transparent 2.5px
+  );
+  background-size: 12px 100%;
+  background-position: 0 center;
+  height: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
