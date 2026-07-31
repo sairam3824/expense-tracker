@@ -8,18 +8,30 @@ import { formatINR } from "@/lib/format";
 import type { Budget, BudgetReport, BudgetRow } from "@/lib/types";
 
 /**
- * Caps are per category and carry across every month, so the figures here are
- * "this month against the standing cap" — which is why the panel says which
- * month it is showing whenever that isn't the current one.
+ * Two kinds of cap, either usable on its own:
+ *
+ *   • an overall monthly budget — one number covering everything, for when you
+ *     don't know the split but do know the total;
+ *   • per-category caps.
+ *
+ * Caps carry across every month, so the figures here are "this month against
+ * the standing cap" — which is why the panel says which month it is showing
+ * whenever that isn't the current one.
+ *
+ * When an overall cap exists it is the headline, because it is the only figure
+ * that honestly measures the whole month. Without one, the headline falls back
+ * to the sum of the category caps and says plainly what it leaves out.
  */
 export default function BudgetPanel({
   report,
   budgets,
+  overallBudget,
   monthLabel,
   daysLeft,
 }: {
   report: BudgetReport;
   budgets: Budget[];
+  overallBudget: number | null;
   monthLabel: string;
   /** null when the selected month isn't the one in progress. */
   daysLeft: number | null;
@@ -32,24 +44,33 @@ export default function BudgetPanel({
     totalBudget,
     totalSpentBudgeted,
     totalSpentUnbudgeted,
+    totalSpent,
+    overallRemaining,
   } = report;
+
+  const hasOverall = report.overallBudget !== null;
 
   if (editing) {
     return (
-      <BudgetForm budgets={budgets} onDone={() => setEditing(false)} />
+      <BudgetForm
+        budgets={budgets}
+        overallBudget={overallBudget}
+        onDone={() => setEditing(false)}
+      />
     );
   }
 
-  if (budgeted.length === 0) {
+  if (!hasOverall && budgeted.length === 0) {
     return (
       <div className="rounded-lg border border-rule/60 bg-card px-4 py-8 text-center">
-        <p className="font-body text-[13px] text-ink-soft">
-          No caps set yet. Give the categories you want to watch a monthly
-          limit and this becomes a &ldquo;how much is left&rdquo; screen.
+        <p className="font-body text-[13px] leading-relaxed text-ink-soft">
+          No caps set yet. Set one monthly budget for everything, or give
+          individual categories a limit — either turns this into a &ldquo;how
+          much is left&rdquo; screen.
         </p>
-        {totalSpentUnbudgeted > 0 && (
+        {totalSpent > 0 && (
           <p className="mt-2 font-body text-[12px] text-ink-soft">
-            {formatINR(totalSpentUnbudgeted)} spent in {monthLabel}.
+            {formatINR(totalSpent)} spent in {monthLabel}.
           </p>
         )}
         <button
@@ -62,7 +83,12 @@ export default function BudgetPanel({
     );
   }
 
-  const left = totalBudget - totalSpentBudgeted;
+  // The headline measures whichever cap is authoritative: the overall one when
+  // it exists, otherwise the category caps — and then only the spending they
+  // actually cover.
+  const cap = hasOverall ? report.overallBudget! : totalBudget;
+  const used = hasOverall ? totalSpent : totalSpentBudgeted;
+  const left = hasOverall ? overallRemaining! : totalBudget - totalSpentBudgeted;
   const perDay = daysLeft && left > 0 ? left / daysLeft : null;
 
   return (
@@ -81,7 +107,7 @@ export default function BudgetPanel({
         </p>
 
         <p className="mt-1.5 font-body text-[12px] text-ink-soft">
-          {formatINR(totalSpentBudgeted)} of {formatINR(totalBudget)} used
+          {formatINR(used)} of {formatINR(cap)} used
           {daysLeft === null && ` in ${monthLabel}`}
         </p>
 
@@ -92,27 +118,46 @@ export default function BudgetPanel({
           </p>
         )}
 
-        {totalSpentUnbudgeted > 0 && (
+        {hasOverall ? (
           <p className="mt-2 font-body text-[11px] text-ink-soft">
-            Plus {formatINR(totalSpentUnbudgeted)} in categories with no cap —
-            not counted above.
+            Your monthly budget — every category counted, capped or not.
           </p>
+        ) : (
+          totalSpentUnbudgeted > 0 && (
+            <p className="mt-2 font-body text-[11px] text-ink-soft">
+              Plus {formatINR(totalSpentUnbudgeted)} in categories with no cap —
+              not counted above. Set a monthly budget to measure everything.
+            </p>
+          )
         )}
       </div>
 
+      {/* A category cap that can't be met without breaking the monthly one is
+          worth saying out loud — the two are set on the same screen and it is
+          easy to leave them contradicting each other. */}
+      {hasOverall && totalBudget > report.overallBudget! && (
+        <p className="rounded-md border border-rule/60 bg-card px-3 py-2 font-body text-[11px] leading-relaxed text-ink-soft">
+          Your category caps add up to {formatINR(totalBudget)}, which is more
+          than the {formatINR(report.overallBudget!)} monthly budget. Staying
+          inside every category would still put you over the month.
+        </p>
+      )}
+
       {/* ── Per category ────────────────────────────────────────────── */}
-      <ul className="space-y-3.5">
-        {budgeted.map((row) => (
-          <li key={row.category}>
-            <BudgetBar row={row} />
-          </li>
-        ))}
-      </ul>
+      {budgeted.length > 0 && (
+        <ul className="space-y-3.5">
+          {budgeted.map((row) => (
+            <li key={row.category}>
+              <BudgetBar row={row} />
+            </li>
+          ))}
+        </ul>
+      )}
 
       {unbudgeted.length > 0 && (
         <div className="rounded-lg border border-rule/60 bg-card px-4 py-3">
           <p className="font-body text-[10px] uppercase tracking-[0.1em] text-ink-soft">
-            No cap set
+            {budgeted.length > 0 ? "No cap set" : "Where it went"}
           </p>
           <ul className="mt-2 space-y-1.5">
             {unbudgeted.map((row) => (
@@ -207,11 +252,18 @@ function SaveButton() {
   );
 }
 
+/* Shared by the overall field and the category rows: 16px minimum, or iOS
+   zooms the page in on focus. */
+const amountInput =
+  "rounded-md border border-rule bg-paper px-3 py-2.5 text-right font-ledger text-[16px] text-ink focus:outline-none focus:ring-2 focus:ring-ink/40";
+
 function BudgetForm({
   budgets,
+  overallBudget,
   onDone,
 }: {
   budgets: Budget[];
+  overallBudget: number | null;
   onDone: () => void;
 }) {
   const current = new Map(budgets.map((b) => [b.category, b.amount]));
@@ -230,12 +282,38 @@ function BudgetForm({
 
   return (
     <form action={formAction} className="rounded-lg border border-rule/60 bg-card p-4">
-      <p className="font-body text-[12px] leading-relaxed text-ink-soft">
-        A monthly cap per category. Leave one blank for no cap — it still gets
-        tracked, just not measured against anything.
+      {/* ── The whole month, one number ──────────────────────────────── */}
+      <div className="rounded-md border border-rule/60 bg-paper px-3 py-3">
+        <label
+          htmlFor="budget-overall"
+          className="font-body text-[13px] font-medium text-ink"
+        >
+          Monthly budget
+        </label>
+        <p className="mt-1 font-body text-[12px] leading-relaxed text-ink-soft">
+          One cap for the whole month, covering every category. Set this alone
+          if you&rsquo;d rather not guess the split.
+        </p>
+        <input
+          id="budget-overall"
+          name="budget:overall"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="1"
+          placeholder="—"
+          defaultValue={overallBudget ?? ""}
+          className={`mt-2.5 w-full ${amountInput}`}
+        />
+      </div>
+
+      {/* ── Optional per-category limits ─────────────────────────────── */}
+      <p className="mt-5 font-body text-[12px] leading-relaxed text-ink-soft">
+        Per-category caps, all optional. Leave one blank for no cap — it still
+        gets tracked, just not measured against anything.
       </p>
 
-      <ul className="mt-4 space-y-2.5">
+      <ul className="mt-3 space-y-2.5">
         {CATEGORIES.map((c) => (
           <li key={c.name} className="flex items-center gap-3">
             <span
@@ -258,8 +336,7 @@ function BudgetForm({
               step="1"
               placeholder="—"
               defaultValue={current.get(c.name) ?? ""}
-              /* 16px minimum, or iOS zooms the page in on focus */
-              className="w-28 rounded-md border border-rule bg-paper px-3 py-2.5 text-right font-ledger text-[16px] text-ink focus:outline-none focus:ring-2 focus:ring-ink/40"
+              className={`w-28 ${amountInput}`}
             />
           </li>
         ))}

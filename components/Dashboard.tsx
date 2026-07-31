@@ -47,12 +47,14 @@ export default function Dashboard({
   transactions,
   months,
   budgets,
+  overallBudget,
   error,
 }: {
   accounts: Account[];
   transactions: Transaction[];
   months: MonthSummary[];
   budgets: Budget[];
+  overallBudget: number | null;
   error: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("home");
@@ -100,8 +102,8 @@ export default function Dashboard({
   );
 
   const report = useMemo(
-    () => budgetProgress(monthTransactions, budgets),
-    [monthTransactions, budgets]
+    () => budgetProgress(monthTransactions, budgets, overallBudget),
+    [monthTransactions, budgets, overallBudget]
   );
 
   const daysLeft = today ? daysLeftInMonth(selectedMonth, today) : null;
@@ -245,6 +247,7 @@ export default function Dashboard({
             <BudgetPanel
               report={report}
               budgets={budgets}
+              overallBudget={overallBudget}
               monthLabel={summary.label}
               daysLeft={daysLeft}
             />

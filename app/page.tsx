@@ -6,7 +6,7 @@ import Dashboard from "@/components/Dashboard";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const { accounts, transactions, months, budgets, error } =
+  const { accounts, transactions, months, budgets, overallBudget, error } =
     await getLedgerData();
 
   return (
@@ -15,6 +15,7 @@ export default async function Home() {
       transactions={transactions}
       months={months}
       budgets={budgets}
+      overallBudget={overallBudget}
       error={error}
     />
   );

@@ -180,23 +180,40 @@ export function categoryTotals(transactions: Transaction[]): CategoryTotal[] {
 /**
  * A month's spending measured against the caps.
  *
+ * Two independent kinds of cap, and either can be used alone:
+ *
+ *   • `overallBudget` — one limit on the whole month. It measures *all*
+ *     spending, so it needs no per-category guesswork, and nothing falls
+ *     outside it.
+ *   • per-category caps — a limit on individual categories.
+ *
  * Budgeted and unbudgeted spending stay separate on purpose: rolling them into
  * one "spent vs budget" figure would put you over budget because of a category
- * you never capped, which is the usual way these screens mislead.
+ * you never capped, which is the usual way these screens mislead. The overall
+ * cap is the honest way to get a single number, because it is declared as
+ * covering everything rather than inferred from a partial set of caps.
  */
 export function budgetProgress(
   transactions: Transaction[],
-  budgets: Budget[]
+  budgets: Budget[],
+  overallBudget: number | null = null
 ): BudgetReport {
   const caps = new Map<CategoryName, number>(
     budgets.filter((b) => b.amount > 0).map((b) => [b.category, b.amount])
   );
 
   const spentBy = new Map<CategoryName, number>();
+  let totalSpent = 0;
   for (const t of transactions) {
     if (t.kind !== "spend") continue;
     spentBy.set(t.category, (spentBy.get(t.category) ?? 0) + t.amount);
+    totalSpent += t.amount;
   }
+
+  // A stored 0 would mean "capped at nothing", which is never what anyone
+  // means; the app deletes the row instead. Guard anyway so a hand-edited
+  // row can't produce a divide-by-zero ratio downstream.
+  const overall = overallBudget !== null && overallBudget > 0 ? overallBudget : null;
 
   const budgeted: BudgetRow[] = [];
   const unbudgeted: BudgetRow[] = [];
@@ -226,6 +243,9 @@ export function budgetProgress(
     totalBudget: budgeted.reduce((s, r) => s + r.budget, 0),
     totalSpentBudgeted: budgeted.reduce((s, r) => s + r.spent, 0),
     totalSpentUnbudgeted: unbudgeted.reduce((s, r) => s + r.spent, 0),
+    overallBudget: overall,
+    totalSpent,
+    overallRemaining: overall === null ? null : overall - totalSpent,
   };
 }
 

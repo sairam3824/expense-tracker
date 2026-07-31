@@ -64,11 +64,21 @@ create index if not exists transactions_to_account_idx on transactions (to_accou
 create index if not exists transactions_category_idx on transactions (category);
 
 -- ─────────────────────────────────────────────────────────────
--- Monthly budgets — one cap per category, carried across every month.
+-- Monthly budgets, carried across every month. Two kinds live here, and
+-- either can be used on its own:
+--
+--   • one cap per category, keyed by the category name;
+--   • one cap for the whole month, keyed by the reserved '__overall__' row —
+--     for when the total is known but the split isn't.
 --
 -- Category is plain text for the same reason it is on transactions: the app's
 -- category list is the source of truth and validates the value on write, so
--- adding a category never needs a migration here.
+-- adding a category never needs a migration here. That is also what lets the
+-- overall cap share this table — no category is named '__overall__', so the
+-- app's isCategory() check keeps the two apart with no extra column.
+--
+-- "No cap" is always the absence of a row, never a zero, so it can't be
+-- confused with "capped at 0".
 -- ─────────────────────────────────────────────────────────────
 
 create table if not exists budgets (

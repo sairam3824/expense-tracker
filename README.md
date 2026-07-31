@@ -46,7 +46,7 @@ deployed on Vercel, designed for a phone.
 | **Login** | One username and password, held in environment variables. Nothing is reachable signed out. |
 | **Spend, add or move money** | Every entry is money out, money in, or a transfer between two of your own accounts. |
 | **Edit anything** | Tap an entry to change any field, including switching what kind of entry it is. |
-| **Budgets** | A monthly cap per category, with what's left and what that comes to per remaining day. |
+| **Budgets** | One cap for the whole month, per-category caps, or both — with what's left and what that comes to per remaining day. |
 | **Copy a balance** | Tap the copy icon on any account (or the total). |
 | **Monthly summary** | Spent, added and entry count for any month. |
 | **Category split** | Where the month's money went, as a share bar plus ranked bars. |
@@ -191,14 +191,30 @@ changes no total.
 
 ### Budgets
 
-One cap per category in the `budgets` table, applying to every month. "No cap" is
-stored as the absence of a row rather than a zero, so it can never be confused
-with "capped at ₹0".
+There are two kinds of cap, and **either works on its own**:
 
-Spending in capped categories and spending in uncapped ones are reported
-separately. Rolling them into a single "spent vs budget" figure would put you
-over budget because of a category you never capped, which is the usual way these
-screens mislead.
+- **A monthly budget** — one number for the whole month. Use this when the total
+  is what stays constant and you'd rather not predict the split.
+- **Per-category caps** — a limit on Groceries, Transport and so on.
+
+Both live in the `budgets` table and apply to every month. The monthly budget is
+the row keyed `__overall__`; no category is named that, so the same `isCategory`
+check that validates every other row keeps the two apart without an extra
+column — which is why this needed no migration. "No cap" is stored as the
+absence of a row rather than a zero, so it can never be confused with "capped at
+₹0".
+
+When a monthly budget is set it becomes the headline, and it is the only figure
+that measures the month honestly: it covers every spend, capped category or not.
+Category caps then read underneath as detail. If they add up to more than the
+monthly budget, the panel says so — the two are set on the same screen and it's
+easy to leave them contradicting each other.
+
+With only category caps, capped and uncapped spending stay separate. Rolling
+them into a single "spent vs budget" figure would put you over budget because of
+a category you never capped, which is the usual way these screens mislead — so
+the panel states the uncapped total beside the headline instead of quietly
+folding it in.
 
 ---
 
@@ -231,7 +247,7 @@ components/
   Dashboard.tsx       Client shell that ties the panels together
   AccountCard.tsx     Balance card with copy-to-clipboard
   EntrySheet.tsx      Add/edit sheet for spends, income and transfers
-  BudgetPanel.tsx     Monthly caps, what's left, per-remaining-day
+  BudgetPanel.tsx     Monthly budget and category caps, what's left per day
   MonthLedgerTable.tsx  Statement view with the signed "Moved" column
   TransactionList.tsx
   charts/             CategoryBreakdown, MonthlyTrend

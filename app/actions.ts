@@ -16,7 +16,11 @@ import {
   verifyPassword,
 } from "@/lib/password";
 import { supabase } from "@/lib/supabase-server";
-import { CATEGORY_NAMES, isCategory } from "@/lib/categories";
+import {
+  CATEGORY_NAMES,
+  isCategory,
+  OVERALL_BUDGET_KEY,
+} from "@/lib/categories";
 import { classifyExpense } from "@/lib/categorize";
 import type { CategoryGuess } from "@/lib/categorize";
 import type { TransactionKind } from "@/lib/types";
@@ -195,10 +199,15 @@ export async function deleteEntry(id: string): Promise<{ error: string | null }>
 export type BudgetState = { error: string | null; ok: boolean };
 
 /**
- * Saves every category's monthly cap in one go. Fields arrive as
- * `budget:<Category Name>`; a blank or zero means "no cap", which is stored as
- * the absence of a row rather than a zero, so "capped at ₹0" and "not capped"
- * can never be confused.
+ * Saves the whole budget screen in one go: the overall monthly cap and every
+ * category's cap. Fields arrive as `budget:<Category Name>`, plus
+ * `budget:overall` for the single month-wide limit.
+ *
+ * A blank or zero means "no cap", which is stored as the absence of a row
+ * rather than a zero, so "capped at ₹0" and "not capped" can never be
+ * confused. Both kinds of cap are optional and independent — an overall cap
+ * with no category caps is the normal way to use this when you don't want to
+ * predict individual categories.
  */
 export async function saveBudgets(
   _previous: BudgetState,
@@ -208,21 +217,31 @@ export async function saveBudgets(
   const drop: string[] = [];
   const now = new Date().toISOString();
 
-  for (const category of CATEGORY_NAMES) {
-    const raw = String(formData.get(`budget:${category}`) ?? "").trim();
+  // `key` is the row's primary key; `label` is what an error message calls it.
+  const fields: { field: string; key: string; label: string }[] = [
+    { field: "budget:overall", key: OVERALL_BUDGET_KEY, label: "the monthly budget" },
+    ...CATEGORY_NAMES.map((name) => ({
+      field: `budget:${name}`,
+      key: name,
+      label: name,
+    })),
+  ];
+
+  for (const { field, key, label } of fields) {
+    const raw = String(formData.get(field) ?? "").trim();
 
     if (raw === "") {
-      drop.push(category);
+      drop.push(key);
       continue;
     }
 
     const amount = Number(raw);
     if (!Number.isFinite(amount) || amount < 0) {
-      return { error: `Enter a valid amount for ${category}.`, ok: false };
+      return { error: `Enter a valid amount for ${label}.`, ok: false };
     }
 
-    if (amount === 0) drop.push(category);
-    else keep.push({ category, amount, updated_at: now });
+    if (amount === 0) drop.push(key);
+    else keep.push({ category: key, amount, updated_at: now });
   }
 
   if (keep.length > 0) {

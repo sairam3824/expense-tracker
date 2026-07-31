@@ -1,7 +1,7 @@
 import "server-only";
 
 import { supabase, supabaseConfigured } from "./supabase-server";
-import { isCategory } from "./categories";
+import { isCategory, OVERALL_BUDGET_KEY } from "./categories";
 import { buildMonths } from "./aggregate";
 import type {
   Account,
@@ -16,6 +16,8 @@ export type LedgerData = {
   transactions: Transaction[];
   months: MonthSummary[];
   budgets: Budget[];
+  /** The single cap on the whole month's spending, or null when none is set. */
+  overallBudget: number | null;
   error: string | null;
 };
 
@@ -48,7 +50,13 @@ function withSchemaHint(message: string): string {
 }
 
 export async function getLedgerData(): Promise<LedgerData> {
-  const empty = { accounts: [], transactions: [], months: [], budgets: [] };
+  const empty = {
+    accounts: [],
+    transactions: [],
+    months: [],
+    budgets: [],
+    overallBudget: null,
+  };
 
   if (!supabaseConfigured) {
     return {
@@ -115,18 +123,26 @@ export async function getLedgerData(): Promise<LedgerData> {
       : null,
   }));
 
-  const budgets: Budget[] = (budgetsRes.data ?? [])
+  // The same table holds both kinds of cap: rows keyed by a real category
+  // name, plus at most one keyed by OVERALL_BUDGET_KEY. `isCategory` is what
+  // keeps them apart, so the reserved row can never turn up as a category.
+  const budgetRows = budgetsRes.data ?? [];
+
+  const budgets: Budget[] = budgetRows
     .filter((b) => isCategory(b.category))
     .map((b) => ({
       category: b.category as Budget["category"],
       amount: Number(b.amount),
     }));
 
+  const overallRow = budgetRows.find((b) => b.category === OVERALL_BUDGET_KEY);
+
   return {
     accounts,
     transactions,
     months: buildMonths(transactions),
     budgets,
+    overallBudget: overallRow ? Number(overallRow.amount) : null,
     // Budgets are the one non-essential read: a missing budgets table should
     // report itself without taking the balances and entries down with it.
     error: budgetsRes.error ? withSchemaHint(budgetsRes.error.message) : null,

@@ -91,9 +91,19 @@ export type BudgetReport = {
   budgeted: BudgetRow[];
   /** Spending in categories with no cap, largest first. */
   unbudgeted: BudgetRow[];
+  /** Sum of the per-category caps. */
   totalBudget: number;
   /** Spending inside budgeted categories only — the figure totalBudget caps. */
   totalSpentBudgeted: number;
   /** Spending outside them, kept separate so the total can't mislead. */
   totalSpentUnbudgeted: number;
+  /**
+   * One cap on the month's entire spend, or null when none is set. Set on its
+   * own it needs no per-category guesswork; it measures everything.
+   */
+  overallBudget: number | null;
+  /** Every spend in the month, capped category or not — what overallBudget caps. */
+  totalSpent: number;
+  /** overallBudget − totalSpent; negative means over. null with no overall cap. */
+  overallRemaining: number | null;
 };

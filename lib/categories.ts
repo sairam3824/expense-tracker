@@ -147,6 +147,18 @@ export function isCategory(value: unknown): value is CategoryName {
 }
 
 /**
+ * The overall monthly cap — one limit on the whole month's spending — is kept
+ * in the same `budgets` table as the per-category caps, under this reserved
+ * key. Every cap then lives in one place, and adding the feature needed no
+ * migration.
+ *
+ * It can never be mistaken for a category: `isCategory` is backed by the
+ * CATEGORIES list above, and no category is named `__overall__`. Readers that
+ * want categories filter on `isCategory` and skip this row for free.
+ */
+export const OVERALL_BUDGET_KEY = "__overall__";
+
+/**
  * Offline classifier. Used when no OpenAI key is configured, and as the
  * fallback whenever the API call fails or times out — so logging an entry
  * never depends on the network.
