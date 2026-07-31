@@ -44,7 +44,7 @@ async function sign(payload: string, secret: string): Promise<string> {
 }
 
 /** Length-independent, value-constant-time string comparison. */
-function timingSafeEqual(a: string, b: string): boolean {
+export function timingSafeEqualString(a: string, b: string): boolean {
   const aBytes = encoder.encode(a);
   const bBytes = encoder.encode(b);
   // Compare lengths without an early return so the loop below always runs.
@@ -81,7 +81,7 @@ export async function verifySessionToken(
   if (!payload || !signature) return false;
 
   const expected = await sign(payload, secret);
-  if (!timingSafeEqual(signature, expected)) return false;
+  if (!timingSafeEqualString(signature, expected)) return false;
 
   try {
     const { exp } = JSON.parse(fromBase64Url(payload)) as { exp?: number };
@@ -91,23 +91,9 @@ export async function verifySessionToken(
   }
 }
 
-/**
- * Checks a submitted username/password against the configured pair.
- * Both comparisons always run so a wrong username and a wrong password take
- * the same time.
- */
-export function credentialsMatch(username: string, password: string): boolean {
-  const expectedUser = process.env.APP_USERNAME;
-  const expectedPassword = process.env.APP_PASSWORD;
-  if (!expectedUser || !expectedPassword) return false;
-
-  const userOk = timingSafeEqual(username, expectedUser);
-  const passwordOk = timingSafeEqual(password, expectedPassword);
-  return userOk && passwordOk;
-}
-
-export function authConfigured(): boolean {
-  return Boolean(
-    process.env.APP_USERNAME && process.env.APP_PASSWORD && sessionSecret()
-  );
+/** Constant-time check of the submitted username. */
+export function usernameMatches(username: string): boolean {
+  const expected = process.env.APP_USERNAME;
+  if (!expected) return false;
+  return timingSafeEqualString(username, expected);
 }

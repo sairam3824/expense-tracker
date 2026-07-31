@@ -38,11 +38,31 @@ cp .env.local.example .env.local
 | `SUPABASE_URL` | Project URL from step 1 |
 | `SUPABASE_SERVICE_ROLE_KEY` | **service_role** key from step 1 |
 | `APP_USERNAME` | the username you'll type to sign in |
-| `APP_PASSWORD` | the password you'll type to sign in |
+| `APP_PASSWORD_HASH` | scrypt hash of your password — run `npm run hash-password` |
 | `SESSION_SECRET` | random string, 16+ chars — `openssl rand -base64 32` |
 | `OPENAI_API_KEY` | optional; without it categories use keyword matching |
 
 None of these are `NEXT_PUBLIC_`, so none of them reach the browser.
+
+### The password
+
+Your password is never stored anywhere, in this repo or in your environment —
+only a scrypt hash of it is. Generate the hash with:
+
+```bash
+npm run hash-password
+```
+
+It prompts twice without echoing, verifies the hash round-trips, and prints the
+`APP_PASSWORD_HASH=…` line to paste into `.env.local` and Vercel.
+
+scrypt is used rather than PBKDF2 or a bare SHA because it is *memory-hard*:
+each attempt costs ~64MB, which blunts the GPU and ASIC parallelism that makes
+offline cracking cheap. Verifying costs about 150ms — unnoticeable when you sign
+in, expensive for anyone guessing.
+
+Forgotten it? There's no recovery step and none is needed: run
+`npm run hash-password` again and replace the value.
 
 ## 3. Run it
 

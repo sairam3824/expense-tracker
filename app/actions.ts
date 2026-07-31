@@ -7,10 +7,14 @@ import { revalidatePath } from "next/cache";
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
-  authConfigured,
   createSessionToken,
-  credentialsMatch,
+  usernameMatches,
 } from "@/lib/auth";
+import {
+  authConfigured,
+  plaintextPasswordStillSet,
+  verifyPassword,
+} from "@/lib/password";
 import { supabase } from "@/lib/supabase-server";
 import { isCategory } from "@/lib/categories";
 import { classifyExpense } from "@/lib/categorize";
@@ -44,8 +48,9 @@ export async function login(
 ): Promise<LoginState> {
   if (!authConfigured()) {
     return {
-      error:
-        "Login isn't configured. Set APP_USERNAME, APP_PASSWORD and SESSION_SECRET in your environment.",
+      error: plaintextPasswordStillSet()
+        ? "APP_PASSWORD is no longer used. Run `npm run hash-password` and set APP_PASSWORD_HASH instead."
+        : "Login isn't configured. Set APP_USERNAME, APP_PASSWORD_HASH and SESSION_SECRET in your environment.",
     };
   }
 
@@ -57,7 +62,16 @@ export async function login(
     return { error: "Too many attempts. Wait a few minutes and try again." };
   }
 
-  if (!credentialsMatch(username, password)) {
+  // Both checks always run, and the scrypt work happens even when the username
+  // is wrong. Short-circuiting would make a bad username return noticeably
+  // faster than a bad password, revealing which one was correct.
+  const userOk = usernameMatches(username);
+  const passwordOk = await verifyPassword(
+    password,
+    process.env.APP_PASSWORD_HASH!
+  );
+
+  if (!userOk || !passwordOk) {
     return { error: "Wrong username or password." };
   }
 
