@@ -2,6 +2,8 @@
   "name": "expense-tracker",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "description": "A private, phone-first expense tracker for three accounts — balances, budgets, transfers and category breakdowns.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
