@@ -4,6 +4,7 @@ import CopyButton from "./CopyButton";
 
 export default function AccountCard({ account }: { account: Account }) {
   const isLow = account.current_balance < 500;
+  const moved = account.total_transferred_in - account.total_transferred_out;
 
   return (
     <div className="shrink-0 w-[176px] rounded-t-md bg-card border border-rule/70 shadow-sm">
@@ -41,6 +42,14 @@ export default function AccountCard({ account }: { account: Account }) {
             {account.total_income > 0 && (
               <span className="text-stamp-green">
                 +{formatINR(account.total_income)}
+              </span>
+            )}
+            {/* Without this the small print wouldn't add up to the balance
+                above once money has been moved between accounts. */}
+            {moved !== 0 && (
+              <span className="text-ink-soft" title="moved between accounts">
+                ↔ {moved > 0 ? "+" : "−"}
+                {formatINR(Math.abs(moved))}
               </span>
             )}
           </div>

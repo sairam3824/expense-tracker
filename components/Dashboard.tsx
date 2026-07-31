@@ -1,44 +1,72 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { categoryTotals, monthKey, monthLedger } from "@/lib/aggregate";
-import { formatINR } from "@/lib/format";
-import type { Account, MonthSummary, Transaction } from "@/lib/types";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import {
+  budgetProgress,
+  categoryTotals,
+  daysLeftInMonth,
+  monthKey,
+  monthLedger,
+} from "@/lib/aggregate";
+import { formatINR, todayISO } from "@/lib/format";
+import type {
+  Account,
+  Budget,
+  MonthSummary,
+  Transaction,
+} from "@/lib/types";
 
 import AccountCard from "./AccountCard";
-import AddEntrySheet from "./AddEntrySheet";
+import EntrySheet from "./EntrySheet";
 import CopyButton from "./CopyButton";
 import StampButton from "./StampButton";
+import BudgetPanel from "./BudgetPanel";
 import MonthLedgerTable from "./MonthLedgerTable";
 import TransactionList from "./TransactionList";
 import CategoryBreakdown from "./charts/CategoryBreakdown";
 import MonthlyTrend from "./charts/MonthlyTrend";
 import { logout } from "@/app/actions";
 
-type Tab = "home" | "charts" | "entries";
+type Tab = "home" | "budget" | "charts" | "entries";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "home", label: "Home" },
+  { id: "budget", label: "Budget" },
   { id: "charts", label: "Charts" },
   { id: "entries", label: "Entries" },
 ];
+
+/** Open state for the entry sheet: absent, adding, or editing a given row. */
+type SheetState = { entry: Transaction | null } | null;
+
+/** The date never changes mid-session, so there is nothing to subscribe to. */
+const subscribeToNothing = () => () => {};
 
 export default function Dashboard({
   accounts,
   transactions,
   months,
+  budgets,
   error,
 }: {
   accounts: Account[];
   transactions: Transaction[];
   months: MonthSummary[];
+  budgets: Budget[];
   error: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("home");
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheet, setSheet] = useState<SheetState>(null);
   const [selectedMonth, setSelectedMonth] = useState(
     () => months[0]?.key ?? monthKey(new Date().toISOString().slice(0, 10))
   );
+
+  // Today's date, read from the phone rather than the server: Vercel runs in
+  // UTC and IST is 5½ hours ahead, so a server-resolved date is the previous
+  // day for part of every evening. Taken through useSyncExternalStore so the
+  // server render sees null and the client sees the real date without the two
+  // disagreeing at hydration.
+  const today = useSyncExternalStore(subscribeToNothing, todayISO, () => null);
 
   const total = accounts.reduce((sum, a) => sum + a.current_balance, 0);
 
@@ -71,6 +99,13 @@ export default function Dashboard({
     [accounts, transactions, selectedMonth]
   );
 
+  const report = useMemo(
+    () => budgetProgress(monthTransactions, budgets),
+    [monthTransactions, budgets]
+  );
+
+  const daysLeft = today ? daysLeftInMonth(selectedMonth, today) : null;
+
   return (
     <div className="min-h-dvh pb-24">
       <main className="mx-auto max-w-md">
@@ -83,7 +118,7 @@ export default function Dashboard({
             <form action={logout}>
               <button
                 type="submit"
-                className="text-[10px] uppercase tracking-[0.14em] text-ink-soft font-body active:opacity-60"
+                className="font-body text-[10px] uppercase tracking-[0.14em] text-ink-soft active:opacity-60"
               >
                 Sign out
               </button>
@@ -125,13 +160,13 @@ export default function Dashboard({
 
         {/* ── Tabs ───────────────────────────────────────────── */}
         <nav className="mt-6 px-5" aria-label="Sections">
-          <div className="grid grid-cols-3 gap-1 rounded-lg bg-card p-1 border border-rule/60">
+          <div className="grid grid-cols-4 gap-1 rounded-lg border border-rule/60 bg-card p-1">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 aria-current={tab === t.id ? "page" : undefined}
-                className={`rounded-md py-2.5 text-[13px] font-medium transition-colors ${
+                className={`rounded-md py-2.5 text-[12px] font-medium transition-colors ${
                   tab === t.id ? "bg-ink text-paper" : "text-ink-soft"
                 }`}
               >
@@ -180,13 +215,17 @@ export default function Dashboard({
                 <MonthLedgerTable
                   ledger={ledger}
                   hasIncome={ledger.total.income > 0}
+                  hasTransfers={ledger.total.transferOut > 0}
                 />
               </div>
             </section>
 
             <section className="mt-6 px-5">
               <SectionTitle>Recent entries</SectionTitle>
-              <TransactionList items={transactions.slice(0, 8)} />
+              <TransactionList
+                items={transactions.slice(0, 8)}
+                onEdit={(entry) => setSheet({ entry })}
+              />
               {transactions.length > 8 && (
                 <button
                   onClick={() => setTab("entries")}
@@ -197,6 +236,19 @@ export default function Dashboard({
               )}
             </section>
           </>
+        )}
+
+        {/* ── Budget ─────────────────────────────────────────── */}
+        {tab === "budget" && (
+          <section className="mt-5 px-5">
+            <SectionTitle>{summary.label} against your caps</SectionTitle>
+            <BudgetPanel
+              report={report}
+              budgets={budgets}
+              monthLabel={summary.label}
+              daysLeft={daysLeft}
+            />
+          </section>
         )}
 
         {/* ── Charts ─────────────────────────────────────────── */}
@@ -226,17 +278,22 @@ export default function Dashboard({
         {tab === "entries" && (
           <section className="mt-5 px-5">
             <SectionTitle>All entries</SectionTitle>
-            <TransactionList items={transactions} />
+            <TransactionList
+              items={transactions}
+              onEdit={(entry) => setSheet({ entry })}
+            />
           </section>
         )}
       </main>
 
-      <StampButton onClick={() => setSheetOpen(true)} />
-      {/* Mounted only while open, so the form starts blank every time */}
-      {sheetOpen && (
-        <AddEntrySheet
+      <StampButton onClick={() => setSheet({ entry: null })} />
+      {/* Mounted only while open, so the form starts from the right entry —
+          or blank — every time */}
+      {sheet && (
+        <EntrySheet
           accounts={accounts}
-          onClose={() => setSheetOpen(false)}
+          entry={sheet.entry}
+          onClose={() => setSheet(null)}
         />
       )}
     </div>

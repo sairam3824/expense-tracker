@@ -6,12 +6,21 @@ deployed on Vercel, designed for a phone.
 
 - **Login** — one username and password, held in environment variables. Nothing
   is reachable signed out.
-- **Spend or add money** — every entry is either money out or money in.
+- **Spend, add or move money** — every entry is money out, money in, or a
+  transfer between two of your own accounts.
+- **Edit anything** — tap an entry to change any field, including switching what
+  kind of entry it is.
+- **Budgets** — a monthly cap per category, with what's left and what that comes
+  to per remaining day.
 - **Copy a balance** — tap the copy icon on any account (or the total).
 - **Monthly summary** — spent, added and entry count for any month.
-- **Budget split** — where the month's money went, by category.
+- **Category split** — where the month's money went.
 - **Auto-categorising** — OpenAI picks the category from what you typed; you can
   always override it, and it falls back to keyword matching without a key.
+
+> Upgrading from an earlier version? Re-run `supabase/schema.sql` before
+> starting the app — transfers and budgets both need new columns and a rebuilt
+> balance view. The app says so on screen if you forget.
 
 ## 1. Set up Supabase
 
@@ -91,11 +100,42 @@ Open http://localhost:3000 and sign in.
 keeps each account current:
 
 ```
-current_balance = starting_balance + sum(money in) − sum(money out)
+current_balance = starting_balance
+                + sum(money in)      − sum(money out)
+                + sum(transfers in)  − sum(transfers out)
 ```
 
-Category totals count **spending only** — a salary credit isn't a budget line
-and would otherwise swamp every real category.
+Category totals count **spending only** — neither a salary credit nor a
+transfer is a budget line, and either would otherwise swamp every real
+category.
+
+### Transfers
+
+Moving money between your own accounts is **one row**, not two: `account_id` is
+the source and `to_account_id` the destination. Logging it as a spend plus an
+income would inflate both the month's spending and the category split with
+money you never actually spent.
+
+Because one row has to move two accounts in opposite directions, the balance
+view first expands each transaction into the per-account movements it causes
+(see the `movement` CTE), rather than joining on `account_id` alone. A database
+constraint requires every transfer to name a destination that isn't its own
+source — that's what stops a half-written transfer from making money vanish.
+
+In the statement table, transfers appear as a signed **Moved** column that nets
+to zero across your accounts, which is correct: shifting money between them
+changes no total.
+
+### Budgets
+
+One cap per category in the `budgets` table, applying to every month. "No cap"
+is stored as the absence of a row rather than a zero, so it can never be
+confused with "capped at ₹0".
+
+Spending in capped categories and spending in uncapped ones are reported
+separately. Rolling them into a single "spent vs budget" figure would put you
+over budget because of a category you never capped, which is the usual way
+these screens mislead.
 
 ## Notes on the charts
 

@@ -16,9 +16,10 @@ import {
   verifyPassword,
 } from "@/lib/password";
 import { supabase } from "@/lib/supabase-server";
-import { isCategory } from "@/lib/categories";
+import { CATEGORY_NAMES, isCategory } from "@/lib/categories";
 import { classifyExpense } from "@/lib/categorize";
 import type { CategoryGuess } from "@/lib/categorize";
+import type { TransactionKind } from "@/lib/types";
 
 // ── Auth ────────────────────────────────────────────────────────────────────
 
@@ -101,19 +102,43 @@ export async function logout() {
 
 export type EntryState = { error: string | null; ok: boolean };
 
-export async function addEntry(
+function readKind(value: FormDataEntryValue | null): TransactionKind {
+  if (value === "income") return "income";
+  if (value === "transfer") return "transfer";
+  return "spend";
+}
+
+/**
+ * Creates an entry, or edits one when the form carries an `id`.
+ *
+ * One action rather than two because the validation is identical and the two
+ * would drift apart otherwise — an edit that skipped a rule the insert
+ * enforces is exactly how a bad row gets into the ledger.
+ */
+export async function saveEntry(
   _previous: EntryState,
   formData: FormData
 ): Promise<EntryState> {
+  const id = String(formData.get("id") ?? "").trim();
   const date = String(formData.get("date") ?? "");
-  const expense = String(formData.get("expense") ?? "").trim();
   const accountId = String(formData.get("account_id") ?? "");
+  const toAccountId = String(formData.get("to_account_id") ?? "").trim();
   const amount = Number(formData.get("amount"));
-  const kind = formData.get("kind") === "income" ? "income" : "spend";
+  const kind = readKind(formData.get("kind"));
   const rawCategory = String(formData.get("category") ?? "Other");
 
+  // A transfer describes itself — the two account names are the description —
+  // so it's the one kind that doesn't need you to type anything.
+  const typed = String(formData.get("expense") ?? "").trim();
+  const expense = typed || (kind === "transfer" ? "Transfer" : "");
+
   if (!expense) return { error: "Give the entry a description.", ok: false };
-  if (!accountId) return { error: "Pick an account.", ok: false };
+  if (!accountId) {
+    return {
+      error: kind === "transfer" ? "Pick the account to move from." : "Pick an account.",
+      ok: false,
+    };
+  }
   if (!Number.isFinite(amount) || amount <= 0) {
     return { error: "Enter an amount greater than zero.", ok: false };
   }
@@ -121,21 +146,36 @@ export async function addEntry(
     return { error: "Pick a valid date.", ok: false };
   }
 
-  // Income isn't part of the budget split, so it never carries a category.
-  const category = kind === "income"
-    ? "Other"
-    : isCategory(rawCategory)
-      ? rawCategory
-      : "Other";
+  if (kind === "transfer") {
+    if (!toAccountId) {
+      return { error: "Pick the account to move money into.", ok: false };
+    }
+    if (toAccountId === accountId) {
+      return { error: "Pick two different accounts to move between.", ok: false };
+    }
+  }
 
-  const { error } = await supabase.from("transactions").insert({
+  // Only spending carries a category: income isn't a budget line, and a
+  // transfer is the same money in both places rather than money spent.
+  const category =
+    kind === "spend" && isCategory(rawCategory) ? rawCategory : "Other";
+
+  const row = {
     date,
     expense,
     account_id: accountId,
+    // Must be nulled out and not merely left alone: switching an existing
+    // transfer to a spend has to clear the destination, or the row fails the
+    // table's transfer check.
+    to_account_id: kind === "transfer" ? toAccountId : null,
     amount,
     kind,
     category,
-  });
+  };
+
+  const { error } = id
+    ? await supabase.from("transactions").update(row).eq("id", id)
+    : await supabase.from("transactions").insert(row);
 
   if (error) return { error: error.message, ok: false };
 
@@ -148,6 +188,60 @@ export async function deleteEntry(id: string): Promise<{ error: string | null }>
   if (error) return { error: error.message };
   revalidatePath("/");
   return { error: null };
+}
+
+// ── Budgets ─────────────────────────────────────────────────────────────────
+
+export type BudgetState = { error: string | null; ok: boolean };
+
+/**
+ * Saves every category's monthly cap in one go. Fields arrive as
+ * `budget:<Category Name>`; a blank or zero means "no cap", which is stored as
+ * the absence of a row rather than a zero, so "capped at ₹0" and "not capped"
+ * can never be confused.
+ */
+export async function saveBudgets(
+  _previous: BudgetState,
+  formData: FormData
+): Promise<BudgetState> {
+  const keep: { category: string; amount: number; updated_at: string }[] = [];
+  const drop: string[] = [];
+  const now = new Date().toISOString();
+
+  for (const category of CATEGORY_NAMES) {
+    const raw = String(formData.get(`budget:${category}`) ?? "").trim();
+
+    if (raw === "") {
+      drop.push(category);
+      continue;
+    }
+
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return { error: `Enter a valid amount for ${category}.`, ok: false };
+    }
+
+    if (amount === 0) drop.push(category);
+    else keep.push({ category, amount, updated_at: now });
+  }
+
+  if (keep.length > 0) {
+    const { error } = await supabase
+      .from("budgets")
+      .upsert(keep, { onConflict: "category" });
+    if (error) return { error: error.message, ok: false };
+  }
+
+  if (drop.length > 0) {
+    const { error } = await supabase
+      .from("budgets")
+      .delete()
+      .in("category", drop);
+    if (error) return { error: error.message, ok: false };
+  }
+
+  revalidatePath("/");
+  return { error: null, ok: true };
 }
 
 export async function suggestCategory(expense: string): Promise<CategoryGuess> {
