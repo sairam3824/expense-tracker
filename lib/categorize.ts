@@ -24,6 +24,7 @@ const CATEGORY_GUIDE = [
   "Health — medicines, pharmacy, doctor, hospital, tests, dental, gym",
   "Home — rent, deposits, room cleaning, maid, repairs, furniture, utensils, toiletries and household supplies",
   "Entertainment — films, outings, trips, parties, games, events, books, hobbies",
+  "Cosmetics — make-up, skincare, fragrance, grooming products, salon and parlour visits",
   "Other — anything that genuinely fits none of the above",
 ].join("\n");
 

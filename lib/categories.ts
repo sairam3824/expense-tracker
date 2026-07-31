@@ -3,12 +3,20 @@
 // their colors from here.
 //
 // Colors are a muted, paper-friendly categorical palette validated with the
-// dataviz palette checker against this app's card surface (#faf8f0):
+// dataviz palette checker against this app's card surface (#faf8f0). With
+// Cosmetics added there are nine hues plus a neutral "Other":
 //   lightness band PASS · chroma floor PASS
-//   worst adjacent CVD ΔE 9.4 (protan) · worst adjacent normal-vision ΔE 20.1
+//   worst adjacent CVD ΔE 9.4 (protan)
+//   worst adjacent normal-vision ΔE 15.9 (Cosmetics vs Entertainment)
+// That last figure clears the floor of 15 but only just, so the ORDER below is
+// load-bearing — re-run the validator before reordering or adding a hue rather
+// than picking a color by eye. Several candidate hues were rejected outright:
+// teal and steel-blue fell under the chroma floor, brown collided with the
+// Entertainment red (CVD ΔE 4.7).
+//
 // The one sub-3:1 slot (Transport ochre, 2.43:1) is relieved by direct labels —
 // every category is always shown with its name and amount in text, never by
-// color alone. Keep this order if you re-run the validator.
+// color alone.
 
 export type CategoryName =
   | "Groceries"
@@ -19,6 +27,7 @@ export type CategoryName =
   | "Health"
   | "Home"
   | "Entertainment"
+  | "Cosmetics"
   | "Other";
 
 export type Category = {
@@ -45,6 +54,8 @@ export const CATEGORIES: Category[] = [
       "food", "lunch", "dinner", "breakfast", "brunch", "snack", "tea",
       "coffee", "chai", "restaurant", "hotel", "mess", "canteen", "swiggy",
       "zomato", "dominos", "pizza", "burger", "biryani", "juice", "bakery",
+      // Longer than Cosmetics' "cream", so these win the longest-match rule.
+      "ice cream", "icecream",
     ],
   },
   {
@@ -89,7 +100,7 @@ export const CATEGORIES: Category[] = [
     color: "#6a5aa8",
     keywords: [
       "rent", "room", "cleaning", "maid", "repair", "furniture", "utensil",
-      "soap", "detergent", "shampoo", "brush", "paste", "toiletries",
+      "soap", "detergent", "brush", "paste", "toiletries", "tissue",
       "household", "maintenance", "deposit",
     ],
   },
@@ -99,6 +110,19 @@ export const CATEGORIES: Category[] = [
     keywords: [
       "movie", "cinema", "theatre", "pvr", "inox", "game", "gaming", "outing",
       "trip", "party", "concert", "event", "book", "hobby",
+    ],
+  },
+  {
+    name: "Cosmetics",
+    color: "#c2559a",
+    keywords: [
+      "cosmetic", "makeup", "make up", "lipstick", "kajal", "eyeliner",
+      "mascara", "foundation", "compact", "nail polish", "perfume", "deodorant",
+      "deo", "face wash", "facewash", "moisturiser", "moisturizer", "cream",
+      "lotion", "serum", "sunscreen", "salon", "parlour", "parlor", "beauty",
+      // Grooming rather than household supplies — matches how the model
+      // classifies it, so both paths agree.
+      "shampoo", "conditioner",
     ],
   },
   {
