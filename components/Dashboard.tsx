@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { categoryTotals, monthKey } from "@/lib/aggregate";
+import { categoryTotals, monthKey, monthLedger } from "@/lib/aggregate";
 import { formatINR } from "@/lib/format";
 import type { Account, MonthSummary, Transaction } from "@/lib/types";
 
@@ -9,6 +9,7 @@ import AccountCard from "./AccountCard";
 import AddEntrySheet from "./AddEntrySheet";
 import CopyButton from "./CopyButton";
 import StampButton from "./StampButton";
+import MonthLedgerTable from "./MonthLedgerTable";
 import TransactionList from "./TransactionList";
 import CategoryBreakdown from "./charts/CategoryBreakdown";
 import MonthlyTrend from "./charts/MonthlyTrend";
@@ -64,6 +65,11 @@ export default function Dashboard({
   );
 
   const monthSpent = totals.reduce((sum, row) => sum + row.amount, 0);
+
+  const ledger = useMemo(
+    () => monthLedger(accounts, transactions, selectedMonth),
+    [accounts, transactions, selectedMonth]
+  );
 
   return (
     <div className="min-h-dvh pb-24">
@@ -166,6 +172,16 @@ export default function Dashboard({
               <StatTile label="Spent" value={summary.spent} tone="red" />
               <StatTile label="Added" value={summary.income} tone="green" />
               <StatTile label="Entries" value={summary.count} tone="plain" />
+            </section>
+
+            <section className="mt-6 px-5">
+              <SectionTitle>{summary.label} statement</SectionTitle>
+              <div className="rounded-lg border border-rule/60 bg-card px-4 py-2">
+                <MonthLedgerTable
+                  ledger={ledger}
+                  hasIncome={ledger.total.income > 0}
+                />
+              </div>
             </section>
 
             <section className="mt-6 px-5">

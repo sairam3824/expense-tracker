@@ -35,6 +35,21 @@ export type MonthSummary = {
   count: number;
 };
 
+/** One account's position across a single month, statement style. */
+export type MonthLedgerRow = {
+  id: string;
+  name: string;
+  opening: number;
+  spent: number;
+  income: number;
+  closing: number;
+};
+
+export type MonthLedger = {
+  rows: MonthLedgerRow[];
+  total: Omit<MonthLedgerRow, "id" | "name">;
+};
+
 export type CategoryTotal = {
   category: CategoryName;
   amount: number;

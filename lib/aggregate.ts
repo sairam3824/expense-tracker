@@ -3,7 +3,14 @@
 // components can re-slice data by month without another round trip.
 
 import { CATEGORIES, categoryColor } from "./categories";
-import type { CategoryTotal, MonthSummary, Transaction } from "./types";
+import type {
+  Account,
+  CategoryTotal,
+  MonthLedger,
+  MonthLedgerRow,
+  MonthSummary,
+  Transaction,
+} from "./types";
 
 /** "2026-07-30" → "2026-07". String maths, so no timezone drift. */
 export function monthKey(date: string): string {
@@ -35,6 +42,66 @@ export function buildMonths(transactions: Transaction[]): MonthSummary[] {
   }
 
   return [...totals.values()].sort((a, b) => b.key.localeCompare(a.key));
+}
+
+/**
+ * Opening and closing balance per account for one month — the statement view
+ * the spreadsheet had, where each month opens with the previous month's close.
+ *
+ * Derived by anchoring on the *current* balance and unwinding backwards:
+ *
+ *   closing(M) = current − (net movement in every month after M)
+ *   opening(M) = closing(M) − (net movement during M)
+ *
+ * Working backwards rather than forwards from starting_balance matters: the
+ * transaction query is capped, so the oldest rows can fall outside the window,
+ * and summing forwards would then silently understate the opening. Everything
+ * from the selected month onward is guaranteed to be loaded, because the month
+ * list is built from that same set of rows.
+ */
+export function monthLedger(
+  accounts: Account[],
+  transactions: Transaction[],
+  month: string
+): MonthLedger {
+  const net = (t: Transaction) => (t.kind === "income" ? t.amount : -t.amount);
+
+  const rows: MonthLedgerRow[] = accounts.map((account) => {
+    const mine = transactions.filter((t) => t.account_id === account.id);
+
+    const movedSince = mine
+      .filter((t) => monthKey(t.date) > month)
+      .reduce((sum, t) => sum + net(t), 0);
+
+    const during = mine.filter((t) => monthKey(t.date) === month);
+    const spent = during
+      .filter((t) => t.kind === "spend")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const income = during
+      .filter((t) => t.kind === "income")
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const closing = account.current_balance - movedSince;
+
+    return {
+      id: account.id,
+      name: account.name,
+      opening: closing - (income - spent),
+      spent,
+      income,
+      closing,
+    };
+  });
+
+  return {
+    rows,
+    total: {
+      opening: rows.reduce((s, r) => s + r.opening, 0),
+      spent: rows.reduce((s, r) => s + r.spent, 0),
+      income: rows.reduce((s, r) => s + r.income, 0),
+      closing: rows.reduce((s, r) => s + r.closing, 0),
+    },
+  };
 }
 
 /**
